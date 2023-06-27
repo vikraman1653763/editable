@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Object Detection - RESULT</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        
+        
+        #image-container{
+            border: 5px solid yellow;
+            width:500px;
+            height:500px;
+
+        
+
+        }
+        #result-image{
+            height:500px;
+            width:500px;
+        }
+        
+
+        .object-label {
+            position: absolute;
+            color: blue;
+            font-weight: bold;
+            pointer-events: none;
+        }
+        .bounding-box {
+           position: absolute; 
+            border: 2px solid red;
+            cursor: pointer;
+            pointer-events: auto;
+            box-sizing: border-box;
+            resize: both;
+            
+        }
+
+        .taskbar {
+            position: fixed;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: flex-end;
+            padding: 10px;
+            background-color: #f1f1f1;
+            z-index: 1;
+            background-color: rgba(61, 180, 220, .5);
+            border-radius: 1.2rem;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            box-shadow: 0 4px 30px rgba(255, 0, 0, 0.1);
+            border: 3px solid rgba(253, 253, 253, );
+        }
+        
+
+    </style>
+</head>
+<body>
+        <div id="image-container">
+            <img id="result-image" src="data:image/jpeg;base64,{{ image_data }}" alt="Result Image">
+            {% for bbox in bounding_boxes %}
+                <div id="bbox-{{ bbox.id }}" class="bounding-box" style="left:{{bbox.x}}px; top:{{bbox.y}}px; width:{{ bbox.width}}px; height:{{bbox.height}}px;"></div>
+                <div id="label-{{ bbox.id }}" class="object-label" style="left:{{ bbox.x }}px; top:{{ bbox.y - 20 }}px;">{{ bbox.id }}</div>
+                console.log({{bbox.x}},{{bbox.y}},{{bbox.width }},{{ bbox.height}})                
+            {% endfor %}
+        </div>
+    
+
+
+    <div class="taskbar">
+        <button class="draw-button" onclick="activateDrawing()"><i class="fas fa-pencil-alt"></i></button><br>
+        <button onclick="saveBoundingBoxes()"><i class="fas fa-save"></i></button><br>
+        <button onclick="resetCanvas()"><i class="fas fa-undo"></i></button><br>
+        <button onclick="window.history.back()"><i class="fas fa-arrow-left"></i></button><br>
+    </div>
+
+    <script>
+        var selectedBox = null;
+        var xOffset = 0;
+        var yOffset = 0;
+        var initialX = 0;
+        var initialY = 0;
+        var isDrawing = false;
+
+        function selectBox(boxId, event) {
+            selectedBox = document.getElementById(boxId);
+            xOffset = event.clientX - selectedBox.offsetLeft;
+            yOffset = event.clientY - selectedBox.offsetTop;
+            initialX = selectedBox.offsetLeft;
+            initialY = selectedBox.offsetTop;
+            event.stopPropagation();
+        }
+
+        function dragBox(event) {
+            if (selectedBox) {
+                event.preventDefault();
+                selectedBox.style.left = (event.clientX - xOffset) + 'px';
+                selectedBox.style.top = (event.clientY - yOffset) + 'px';
+                var labelId = selectedBox.id.replace('bbox-', 'label-');
+                var label = document.getElementById(labelId);
+                label.style.left = selectedBox.style.left;
+                label.style.top = (parseInt(selectedBox.style.top) - 20) + 'px';
+            }
+        }
+
+        function releaseBox() {
+            selectedBox = null;
+        }
+
+        function saveBoundingBoxes() {
+            var boundingBoxes = [];
+            var boxes = document.getElementsByClassName('bounding-box');
+            for (var i = 0; i < boxes.length; i++) {
+                var boxId = boxes[i].id.replace('bbox-', '');
+                var labelId = 'label-' + boxId;
+                var box = boxes[i];
+                var label = document.getElementById(labelId);
+                var x = parseInt(box.style.left);
+                var y = parseInt(box.style.top);
+                var width = parseInt(box.style.width);
+                var height = parseInt(box.style.height);
+                boundingBoxes.push({ id: boxId, x: x, y: y, width: width, height: height });
+            }
+
+            var imageData = '{{ image_data }}';
+            var data = {
+                image_data: imageData,
+                bounding_boxes: boundingBoxes
+            };
+
+            var scrollX = window.scrollX || window.pageXOffset || document.documentElement.scrollLeft;
+            var scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/save', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+                    // Restore the scroll position after the request completes
+                    window.scrollTo(scrollX, scrollY);
+
+                    // Redirect to the other web page
+                    window.location.href = '/otherpage';
+                }
+            };
+            xhr.send(JSON.stringify(data));
+        }
+
+        function activateDrawing() {
+            var image = document.querySelector('img');
+            image.addEventListener('mousedown', startDrawing);
+            image.addEventListener('mousemove', drawRectangle);
+            image.addEventListener('mouseup', stopDrawing);
+        }
+        document.addEventListener('mouseup', releaseBox);
+
+        function startDrawing(event) {
+            isDrawing = true;
+
+            var image = document.querySelector('img');
+            var rect = document.createElement('div');
+            rect.className = 'bounding-box';
+            rect.style.left = (event.clientX - image.offsetLeft) + 'px';
+            rect.style.top = (event.clientY - image.offsetTop) + 'px';
+            rect.style.width = '0px';
+            rect.style.height = '0px';
+            document.body.appendChild(rect);
+
+            var label = document.createElement('div');
+            label.className = 'object-label';
+            label.style.left = rect.style.left;
+            label.style.top = (parseInt(rect.style.top) - 20) + 'px';
+            label.innerHTML = 'New Object';
+            document.body.appendChild(label);
+
+            selectedBox = rect;
+            initialX = event.clientX - image.offsetLeft;
+            initialY = event.clientY - image.offsetTop;
+
+            document.addEventListener('mousemove', drawRectangle);
+            document.addEventListener('mouseup', stopDrawing);
+
+            event.stopPropagation();
+        }
+
+        function drawRectangle(event) {
+            if (!isDrawing) return;
+            var image = document.querySelector('img');
+            var rect = selectedBox;
+            var label = document.getElementById('label-' + rect.id);
+
+            var x = Math.min(initialX, event.clientX - image.offsetLeft);
+            var y = Math.min(initialY, event.clientY - image.offsetTop);
+            var width = Math.abs(event.clientX - image.offsetLeft - initialX);
+            var height = Math.abs(event.clientY - image.offsetTop - initialY);
+
+            rect.style.left = x + 'px';
+            rect.style.top = y + 'px';
+            rect.style.width = width + 'px';
+            rect.style.height = height + 'px';
+
+            label.style.left = rect.style.left;
+            label.style.top = (parseInt(rect.style.top) - 20) + 'px';
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function resetCanvas() {
+            
+            var imageContainer = document.getElementById('image-container');
+            var boundingBoxes = document.getElementsByClassName('bounding-box');
+            var objectLabels = document.getElementsByClassName('object-label');
+
+            while (boundingBoxes[0]) {
+                boundingBoxes[0].parentNode.removeChild(boundingBoxes[0]);
+            }
+
+            while (objectLabels[0]) {
+                objectLabels[0].parentNode.removeChild(objectLabels[0]);
+            }
+
+            
+        }
+
+
+
+
+
+        dragElement(document.querySelector(".bounding-box"));
+
+        function dragElement(elmnt) {
+            var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            if (document.getElementById(elmnt.id + "header")) {
+                // if present, the header is where you move the DIV from:
+                document.getElementById(elmnt.id + "header").onmousedown = dragMouseDown;
+            } else {
+                // otherwise, move the DIV from anywhere inside the DIV:
+                elmnt.onmousedown = dragMouseDown;
+            }
+
+            function dragMouseDown(e) {
+                e = e || window.event;
+                e.preventDefault();
+                // get the mouse cursor position at startup:
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                // call a function whenever the cursor moves:
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e = e || window.event;
+                e.preventDefault();
+                // calculate the new cursor position:
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                // set the element's new position:
+                elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
+                elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+            }
+
+            function closeDragElement() {
+                // stop moving when mouse button is released:
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+        var imageContainer = document.getElementById('image-container');
+        var image = document.getElementById('result-image');
+        var boundingBoxes = document.getElementsByClassName('bounding-box');
+        var objectLabels = document.getElementsByClassName('object-label');
+        var newImageWidth = imageContainer.offsetWidth;
+        var newImageHeight = imageContainer.offsetHeight;
+
+        for (var i = 0; i < boundingBoxes.length; i++) {
+            var box = boundingBoxes[i];
+            var label = objectLabels[i];
+            var boxLeft = parseInt(box.style.left);
+            var boxTop = parseInt(box.style.top);
+            var boxWidth = parseInt(box.style.width);
+            var boxHeight = parseInt(box.style.height);
+
+            var newBoxLeft = (boxLeft / image.width) * newImageWidth;
+            var newBoxTop = (boxTop / image.height) * newImageHeight;
+            var newBoxWidth = (boxWidth / image.width) * newImageWidth;
+            var newBoxHeight = (boxHeight / image.height) * newImageHeight;
+
+            box.style.left = newBoxLeft + 'px';
+            box.style.top = newBoxTop + 'px';
+            box.style.width = newBoxWidth + 'px';
+            box.style.height = newBoxHeight + 'px';
+
+            label.style.left = box.style.left;
+            label.style.top = (parseInt(box.style.top) - 20) + 'px';
+        }
+
+    </script>
+</body>
+</html>
